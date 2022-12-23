@@ -29,6 +29,22 @@ class TreeNode:
         self.parent: Optional[TreeNode] = None
         self.level: int = 0
 
+    def has_one_child(self) -> bool:
+        """
+        Returns whether the node has one child
+
+        :return: Whether the node has one child
+        """
+        return (self.left is not None and self.right is None) or (self.right is not None and self.left is None)
+
+    def has_two_children(self) -> bool:
+        """
+        Returns whether the node has two children
+
+        :return: Whether the node has two children
+        """
+        return self.left is not None and self.right is not None
+
 
 class AATree:
     """
@@ -148,6 +164,55 @@ class AATree:
         for each_argument in args:
             node = TreeNode(each_argument)
             self.insert(node)
+
+    def deletion(self, value: int) -> bool:
+        """
+        Deletes a node from the tree, given a value to find the node associated with it
+
+        :param value: The value to find, traditional way we insert a node, however, we go until we find the node that matches the value
+        :return: Whether the deletion was successful or not
+        """
+
+        found_node: Optional[TreeNode] = None
+        temporary_root: Optional[TreeNode] = self.root
+
+        while temporary_root is not None:
+            if temporary_root.value > value:
+                # move to the left
+                temporary_root = temporary_root.left
+            elif temporary_root.value < value:
+                # move to the right
+                temporary_root = temporary_root.right
+            else:
+                # is equal, we found our node
+                found_node = temporary_root
+                break
+        if found_node is None:
+            return False
+
+        # found node, keep continuing
+        if found_node.color == Color.RED and found_node.left is None:
+            # is red and is a leaf
+            found_node.parent.right = None
+            found_node.parent = None
+        elif found_node.color == Color.BLACK and found_node.has_one_child():
+            # is a black node and has one child
+            if found_node.right is not None:
+                found_node.value = found_node.right.value
+                found_node.right = None
+        elif found_node.color == Color.BLACK and found_node.has_two_children():
+            # find minimum of right subtree for successor
+            inorder_successor = found_node.right
+            while inorder_successor.left is not None:
+                inorder_successor = inorder_successor.left
+            # found successor
+            if inorder_successor.color == Color.RED:
+                found_node.value = inorder_successor.value
+                inorder_successor = None
+            elif inorder_successor.color == Color.BLACK and inorder_successor.right is not None:
+                found_node.value = inorder_successor.right.value
+                inorder_successor.right = None
+        return True
 
 
 if __name__ == '__main__':
