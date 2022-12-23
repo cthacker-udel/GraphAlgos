@@ -46,6 +46,7 @@ class TreeNode:
             RangePointer().set_range(lt=initial_key), RangePointer().set_range(gt=initial_key)
         ]
         self.threshold = .70
+        self.parent: Optional[TreeNode] = None
 
     def set_threshold(self: TreeNode, threshold: float) -> TreeNode:
         """
@@ -85,7 +86,9 @@ class TreeNode:
     def add_child(self, value: int) -> TreeNode:
         for each_key_pointer in self.key_pointers:
             if each_key_pointer.value_in_range(value):
-                each_key_pointer.children.append(TreeNode(value))
+                added_node = TreeNode(value)
+                added_node.parent = self
+                each_key_pointer.children.append(added_node)
                 break
         return self
 
