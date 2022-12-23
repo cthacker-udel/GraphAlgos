@@ -101,6 +101,7 @@ class AATree:
         if self.root == x:
             p.color = Color.BLACK
             self.root = p
+        p.level += 1
 
         #  now we need to skew because we have a black right child, which is disallowed
 
@@ -157,6 +158,7 @@ class AATree:
             else:
                 node.parent = curr_node_parent
         else:  # inserting node to the left
+            node.level = curr_node_parent.level - 1
             self.skew(node, curr_node_parent)
         return self
 
@@ -165,7 +167,7 @@ class AATree:
             node = TreeNode(each_argument)
             self.insert(node)
 
-    def deletion(self, value: int) -> bool:
+    def delete(self, value: int) -> bool:
         """
         Deletes a node from the tree, given a value to find the node associated with it
 
@@ -208,10 +210,25 @@ class AATree:
             # found successor
             if inorder_successor.color == Color.RED:
                 found_node.value = inorder_successor.value
-                inorder_successor = None
+                found_node.level = inorder_successor.level
             elif inorder_successor.color == Color.BLACK and inorder_successor.right is not None:
                 found_node.value = inorder_successor.right.value
+                found_node.level = inorder_successor.right.level
                 inorder_successor.right = None
+            else:
+                found_node.value = inorder_successor.value
+                found_node.level = inorder_successor.level
+            if inorder_successor is not None and inorder_successor.parent is not None:
+                if inorder_successor.parent.right == inorder_successor:
+                    inorder_successor.parent.right = None
+                else:
+                    inorder_successor.parent.left = None
+            if found_node.right == inorder_successor:
+                found_node.right = None
+                if found_node.left is not None and found_node.left.level == found_node.level:
+                    self.skew(found_node.left, found_node)
+            else:
+                found_node.left = None
         return True
 
 
@@ -226,3 +243,4 @@ if __name__ == '__main__':
     tree.insert(TreeNode(26))
     tree.insert(TreeNode(30))
     tree.insert(TreeNode(31))
+    tree.delete(30)
