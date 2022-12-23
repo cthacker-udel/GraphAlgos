@@ -71,6 +71,7 @@ class AATree:
                     if x.parent.color == Color.RED:
                         #  double right links
                         self.split(p, x.parent)
+                p.parent = x.parent
             x.parent = p
             x.right = b
 
@@ -159,4 +160,4 @@ if __name__ == '__main__':
     tree.insert(TreeNode(25))
     tree.insert(TreeNode(26))
     tree.insert(TreeNode(30))
-    print('hello')
+    tree.insert(TreeNode(31))
