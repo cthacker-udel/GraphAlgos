@@ -1,6 +1,7 @@
 from __future__ import annotations
 from enum import Enum
-from typing import Optional, List
+from typing import Optional, List, Set
+from collections import OrderedDict
 
 
 class RangePointer:
@@ -15,6 +16,7 @@ class RangePointer:
         self.ge: Optional[int] = None  # Whether the range has the greater than or equal to applied
         self.lt: Optional[int] = None  # Whether the range has the less than applied
         self.child: Optional[TreeNode] = None  # The child the RangePointer points to
+        self.parent: Optional[TreeNode] = None  # The parent of the RangePointer
         self.ends: bool = False  # Whether the range pointer is on the ends of the node (far left or far right)
         # in the tree
 
@@ -42,11 +44,23 @@ class RangePointer:
         """
         if self.ge is None and self.lt is None:
             return False
+        elif self.ge is not None and self.lt is not None:
+            return value >= self.ge and value < self.lt
         elif self.ge is not None and self.lt is None:
             return value >= self.ge
         elif self.ge is None and self.lt is not None:
             return value < self.lt
         return False
+
+    def set_parent(self, parent: TreeNode) -> RangePointer:
+        """
+        Sets the value of the internal `parent` field of the BPlusTree node
+
+        :param parent: The value we are setting the `parent` field to
+        :return: The modified instance
+        """
+        self.parent = parent
+        return self
 
 
 class TreeNode:
@@ -74,14 +88,15 @@ class TreeNode:
         for ind, element in enumerate(self.keys):
             if ind == 0:
                 if len(self.keys) == 1:
-                    range_pointers.append(RangePointer().set_range(lt=element, ends=True))
-                    range_pointers.append(RangePointer().set_range(ge=element, ends=True))
+                    range_pointers.append(RangePointer().set_range(lt=element, ends=True).set_parent(self))
+                    range_pointers.append(RangePointer().set_range(ge=element, ends=True).set_parent(self))
                 else:
-                    range_pointers.append(RangePointer().set_range(lt=element, ends=True))
-            elif ind == len(self.keys) - 1:
-                range_pointers.append(RangePointer().set_range(ge=element, ends=True))
+                    range_pointers.append(RangePointer().set_range(lt=element, ends=True).set_parent(self))
             else:
-                range_pointers.append(RangePointer().set_range(ge=self.keys[ind - 1], lt=element))
+                range_pointers.append(RangePointer().set_range(ge=self.keys[ind - 1], lt=element).set_parent(self))
+                range_pointers.append(RangePointer()
+                                      .set_range(ge=element, ends=ind == len(self.keys) - 1)
+                                      .set_parent(self))
         return range_pointers
 
     def modify_range_pointers(self) -> TreeNode:
@@ -93,16 +108,16 @@ class TreeNode:
         modified_range_pointers = self.generate_range_pointers()
         # parse through each range_pointers children, grabbing their max from their keys, and comparing it to the
         # new and existing range pointer, if we find any matching keys, potential for splitting?
+        if self.range_pointers is None:
+            self.range_pointers = modified_range_pointers
+            return self
+
         key_map: dict[int, TreeNode] = {}  # The maximum key mapped to the RangePointer's child
-        level_map: dict[int, List[TreeNode]] = {}
         for each_range_pointer in self.range_pointers:  # Populating the dictionaries of both key_map and level_map
             range_pointer_child = each_range_pointer.child
-            max_child_keys = max(range_pointer_child.keys)
-            key_map[max_child_keys] = range_pointer_child
-            if range_pointer_child.level in level_map:
-                level_map[range_pointer_child.level].append(range_pointer_child)
-            else:
-                level_map[range_pointer_child.level] = [range_pointer_child]
+            if range_pointer_child is not None:
+                max_child_keys = max(range_pointer_child.keys)
+                key_map[max_child_keys] = range_pointer_child
 
         self.range_pointers = modified_range_pointers  # Set the new range pointers to be the original modified range
         # pointers after we have collected all the children from our current position in the subtree
@@ -112,18 +127,7 @@ class TreeNode:
                 if each_range_pointer.in_range(each_max_key):
                     each_range_pointer.child = key_map[each_max_key]
                     break
-
-        for element in level_map.keys():  # Assigning right links
-            list_level_nodes = level_map[element]
-            for ind, each_node in enumerate(list_level_nodes):
-                if ind == len(list_level_nodes) - 1:
-                    break
-                else:
-                    each_node.right_link = list_level_nodes[ind + 1]
-
         return self
-
-
 
     def add_key(self, value: int):
         """
@@ -155,6 +159,7 @@ class BPlusTree:
     """
     Represents an instance of the BPlus tree data structure
     """
+
     def __init__(self):
         """
         Initializes a B+ tree data structure
@@ -163,7 +168,44 @@ class BPlusTree:
         self.level_nodes: Optional[List[TreeNode]] = None  # A list of the nodes within a level, to make for optimal
         # chaining
 
-    def insert_key(self, value: int, level: int) -> BPlusTree:
+    def gather_nodes_of_level(self, level: int, curr_node: Optional[TreeNode] = None) -> Optional[List[TreeNode]]:
+        """
+        Sets the right links of all nodes with the specified level
+
+        :return: The modified tree instance
+        """
+        if curr_node is not None and curr_node.level > level:
+            return None
+        if curr_node is None:
+            curr_node = self.root
+        accumulated_nodes = OrderedDict()
+        for each_range_pointer in curr_node.range_pointers:
+            if each_range_pointer.parent.level < level:
+                if each_range_pointer.child is not None:
+                    gathered_nodes = self.gather_nodes_of_level(level, each_range_pointer.child)
+                    for each_node in gathered_nodes:
+                        accumulated_nodes[each_node] = None
+            elif each_range_pointer.parent.level == level:
+                accumulated_nodes[each_range_pointer.parent] = None
+        return list(accumulated_nodes.keys())
+
+    def set_right_links(self, level: int) -> BPlusTree:
+        """
+        Sets the right links of all the nodes at a specific level
+
+        :param level: The level to construct the right links on
+        :return: The modified Tree instance
+        """
+        all_nodes_on_level = self.gather_nodes_of_level(level)
+        print("nodes on level = ", all_nodes_on_level)
+        for ind, element in enumerate(all_nodes_on_level):
+            if ind == len(all_nodes_on_level) - 1:
+                break
+            else:
+                all_nodes_on_level[ind].right_link = all_nodes_on_level[ind + 1]
+        return self
+
+    def insert_node(self, value: int, level: int = 1) -> BPlusTree:
         """
         Inserts a key within the BPlus tree
 
@@ -181,16 +223,36 @@ class BPlusTree:
                 inserted: bool = False
                 while curr_node is not None and not inserted:
                     for each_range_pointer in curr_node.range_pointers:
-                        if each_range_pointer.child.level == level and each_range_pointer.in_range(value):
+                        if each_range_pointer.child is not None and each_range_pointer.child.level == level and each_range_pointer.in_range(
+                                value):
                             each_range_pointer.child.add_key(value)
                             inserted = True
                             break
                         elif each_range_pointer.in_range(value) and each_range_pointer.child is not None:
                             curr_node = each_range_pointer.child
+                            inserted = False
                             break
                         elif each_range_pointer.in_range(value) and each_range_pointer.child is None:
-                            each_range_pointer.child = TreeNode().add_key(value)
+                            inserted_node = TreeNode().add_key(value)
+                            inserted_node.level = each_range_pointer.parent.level + 1
+                            each_range_pointer.child = inserted_node
                             inserted = True
                             break
+                        else:
+                            inserted = True
+        self.set_right_links(level)
+        return self
 
 
+if __name__ == '__main__':
+    tree = BPlusTree()
+    tree.insert_node(3)
+    tree.insert_node(5)
+    tree.insert_node(1, 2)
+    tree.insert_node(2, 2)
+    tree.insert_node(3, 2)
+    tree.insert_node(4, 2)
+    tree.insert_node(5, 2)
+    tree.insert_node(6, 2)
+    tree.insert_node(7, 2)
+    print('Done!')
