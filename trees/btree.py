@@ -84,6 +84,12 @@ class TreeNode:
         return self
 
     def add_child(self, value: int) -> TreeNode:
+        """
+        Adds a child to the current TreeNode
+
+        :param value: The value we are adding
+        :return: The modified TreeNode
+        """
         for each_key_pointer in self.key_pointers:
             if each_key_pointer.value_in_range(value):
                 added_node = TreeNode(value)
@@ -92,7 +98,28 @@ class TreeNode:
                 break
         return self
 
+    def get_children(self) -> Optional[List[TreeNode]]:
+        """
+        Fetches all the children from the node
+
+        :return: The list of all children the node has
+        """
+        children = []
+        for each_key_pointer in self.key_pointers:
+            children_keys: Optional[List[TreeNode]] = each_key_pointer.children
+            if children_keys is not None:
+                for each_key in children_keys:
+                    children.extend(each_key.keys)
+        return children
+
     def reorder_children(self, new_key_pointers: List[RangePointer]) -> TreeNode:
+        """
+        Re-orders the children of the node according to the revised range pointers
+
+        :param new_key_pointers: The list of new range pointers we will apply after gathering all the children from
+        the current node
+        :return: The modified TreeNode
+        """
         children = []
         for each_key_pointer in self.key_pointers:
             children_keys: Optional[List[TreeNode]] = each_key_pointer.children
@@ -109,6 +136,27 @@ class TreeNode:
                     break
         return self
 
+    def reorder_children_no_new(self) -> TreeNode:
+        """
+                Re-orders the children of the node according to its internal key_pointers
+
+                :return: The modified TreeNode
+                """
+        children = []
+        for each_key_pointer in self.key_pointers:
+            children_keys: Optional[List[TreeNode]] = each_key_pointer.children
+            if children_keys is not None:
+                for each_key in children_keys:
+                    children.extend(each_key.keys)
+            each_key_pointer.children = []
+        # compiled a list of all children
+        for each_child in children:
+            for each_key_pointer in self.key_pointers:
+                if each_key_pointer.value_in_range(each_child):
+                    each_key_pointer.children.append(each_child)
+                    break
+        return self
+
 
 class BTree:
     """
@@ -116,7 +164,51 @@ class BTree:
     """
 
     def __init__(self):
+        """
+        Initializes a B-Tree with an empty root node
+        """
         self.root: Optional[TreeNode] = None
+
+    def find_node(self, value: int) -> TreeNode | None:
+        """
+        Finds a node within the B-Tree
+
+        :param value: The value we are searching for
+        :return: The modified B-Tree
+        """
+        curr_node = self.root
+        while curr_node is not None:
+            for each_range_pointer in curr_node.key_pointers:
+                if each_range_pointer.value_in_range(value):
+                    for each_child in each_range_pointer.children:
+                        if value in each_child.keys:
+                            curr_node = each_child
+                            return curr_node
+        return curr_node
+
+    def delete(self, value: int) -> BTree:
+        found_node = self.find_node(value)
+        # take that node, if the value is the only key within the node, then re-populate the parent with the
+        # children of this node, else, just remove the key, and recalibrate the children
+        if len(found_node.keys) > 1:
+            # more than one key
+            del found_node.keys[found_node.keys.index(value)]
+            found_node.reorder_children_no_new()
+        elif len(found_node.keys) == 0:
+            # the only key within the node
+            found_node_children = found_node.get_children()
+            found_node_parent = found_node.parent
+            for each_key_pointer in found_node_parent.key_pointers:
+                for each_child in each_key_pointer.children:
+                    if each_child == found_node:
+                        each_child = None
+                        for each_sub_child in found_node_children:
+                            for each_child_key in each_sub_child.keys:
+                                found_node_parent.add_child(each_child_key)
+                        return self
+        return self
+
+
 
 
 if __name__ == '__main__':
